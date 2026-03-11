@@ -17,7 +17,7 @@ import signal
 import warnings
 from contextlib import contextmanager
 from collections import deque
-from nanochat.common import compute_init, autodetect_device_type
+from nanochat.common import compute_init, autodetect_device_type, COMPUTE_DTYPE
 from nanochat.checkpoint_manager import load_model
 
 # -----------------------------------------------------------------------------
@@ -171,13 +171,10 @@ class Engine:
         """Same as generate, but does single prefill and then clones the KV cache."""
         assert isinstance(tokens, list) and isinstance(tokens[0], int), "expecting list of ints"
         device = self.model.get_device()
-        # NOTE: setting the dtype here and in this way is an ugly hack.
-        # Currently the repo assumes that cuda -> bfloat16 and everything else -> float32.
-        # We need to know the dtype here to call __init__ on KVCache and pre-allocate its tensors.
-        # As a quick hack, we're making generate() function inherit and know about this repo-wise assumption.
-        # I think there has to be a bigger refactor to deal with device/dtype tracking across the codebase.
-        # In particular, the KVCache should allocate its tensors lazily
-        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        # Keep KV cache dtype aligned with model compute dtype.
+        # This avoids SDPA q/k/v dtype mismatches on pre-Ampere GPUs (e.g. T4),
+        # where COMPUTE_DTYPE defaults to fp32 instead of bf16.
+        dtype = COMPUTE_DTYPE
         rng = torch.Generator(device=device)
         rng.manual_seed(seed)
 
@@ -331,7 +328,7 @@ if __name__ == "__main__":
     # generate tokens with Engine
     generated_tokens = []
     engine = Engine(model, tokenizer)
-    stream = engine.generate(prompt_tokens, num_samples=1, **kwargs) # note: runs in fp32
+    stream = engine.generate(prompt_tokens, num_samples=1, **kwargs) # note: runs in COMPUTE_DTYPE
     torch.cuda.synchronize()
     t0 = time.time()
     for token_column, token_masks in stream:
