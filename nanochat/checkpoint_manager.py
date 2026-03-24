@@ -58,6 +58,27 @@ def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data,
         torch.save(optimizer_data, optimizer_path)
         logger.info(f"Saved optimizer state to: {optimizer_path}")
 
+def delete_checkpoint(checkpoint_dir, step, delete_optimizer=True, rank=0):
+    """Delete a checkpoint step from disk.
+
+    Model parameters and metadata are only removed by rank 0. Optimizer shards are
+    rank-local, so each rank removes only its own shard.
+    """
+    if rank == 0:
+        model_path = os.path.join(checkpoint_dir, f"model_{step:06d}.pt")
+        if os.path.exists(model_path):
+            os.remove(model_path)
+            logger.info(f"Deleted model parameters: {model_path}")
+        meta_path = os.path.join(checkpoint_dir, f"meta_{step:06d}.json")
+        if os.path.exists(meta_path):
+            os.remove(meta_path)
+            logger.info(f"Deleted metadata: {meta_path}")
+    if delete_optimizer:
+        optimizer_path = os.path.join(checkpoint_dir, f"optim_{step:06d}_rank{rank:d}.pt")
+        if os.path.exists(optimizer_path):
+            os.remove(optimizer_path)
+            logger.info(f"Deleted optimizer state: {optimizer_path}")
+
 def load_checkpoint(checkpoint_dir, step, device, load_optimizer=False, rank=0):
     # Load the model state
     model_path = os.path.join(checkpoint_dir, f"model_{step:06d}.pt")

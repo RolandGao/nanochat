@@ -5,7 +5,7 @@ export NANOCHAT_BASE_DIR=$PWD/.cache
 export TORCH_COMPILE_DISABLE=1
 export NANOCHAT_DTYPE=float16
 
-/venv/main/bin/python -m scripts.base_train -- \
+/venv/main/bin/python -m scripts.base_train \
   --depth=12 \
   --window-pattern=L \
   --max-seq-len=1024 \
@@ -18,3 +18,78 @@ export NANOCHAT_DTYPE=float16
   --save-every=-1 \
   --run=dummy \
   --model-tag=v100-d12-5min
+
+/venv/main/bin/python -m scripts.base_train -- \
+  --depth=12 \
+  --window-pattern=L \
+  --max-seq-len=1024 \
+  --device-batch-size=8 \
+  --total-batch-size=32768 \
+  --num-iterations=4000 \
+  --eval-every=-1 \
+  --core-metric-every=-1 \
+  --sample-every=-1 \
+  --save-every=-1 \
+  --run=dummy \
+  --model-tag=v100-d12-1h
+
+/venv/main/bin/python -m scripts.base_train -- \
+  --depth=12 \
+  --window-pattern=L \
+  --max-seq-len=1024 \
+  --device-batch-size=8 \
+  --total-batch-size=32768 \
+  --num-iterations=31000 \
+  --save-every=4000 \
+  --keep-last-checkpoint=1 \
+  --save-final-optimizer=0 \
+  --eval-every=-1 \
+  --core-metric-every=-1 \
+  --sample-every=-1 \
+  --run=dummy \
+  --model-tag=v100-d12-8h
+
+
+cd /workspace/neural_networks_optimization/nanochat
+mkdir -p .tmp
+export TMPDIR=$PWD/.tmp
+export NANOCHAT_BASE_DIR=$PWD/.cache
+export TORCH_COMPILE_DISABLE=1
+export NANOCHAT_DTYPE=float16
+
+/venv/main/bin/python -m scripts.base_train -- \
+  --depth=12 \
+  --window-pattern=L \
+  --max-seq-len=1024 \
+  --device-batch-size=8 \
+  --total-batch-size=32768 \
+  --num-iterations=31000 \
+  --eval-every=-1 \
+  --core-metric-every=-1 \
+  --sample-every=-1 \
+  --save-every=-1 \
+  --run=dummy \
+  --model-tag=v100-d12-8h
+
+
+cd /workspace/neural_networks_optimization/nanochat
+mkdir -p .tmp
+export TMPDIR=$PWD/.tmp
+export NANOCHAT_BASE_DIR=$PWD/.cache
+export NANOCHAT_DTYPE=float16
+
+/venv/main/bin/python -m scripts.base_eval \
+  --model-tag v100-d12-5min \
+  --device-batch-size=8 \
+  --max-per-task=100 \
+  --split-tokens=524288
+
+/venv/main/bin/python -m scripts.base_eval \
+  --model-tag v100-d12-5min \
+  --device-batch-size=8 \
+  --max-per-task=100 \
+  --split-tokens=524288 \
+  2>&1 | tee eval_v100_d12_5min.txt
+
+leaderboard
+bpb 0.71800	core 0.2626

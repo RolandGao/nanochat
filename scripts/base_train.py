@@ -29,7 +29,7 @@ from nanochat.gpt import GPT, GPTConfig, Linear
 from nanochat.dataloader import tokenizing_distributed_data_loader_bos_bestfit, tokenizing_distributed_data_loader_with_state_bos_bestfit
 from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type, get_peak_flops, COMPUTE_DTYPE, COMPUTE_DTYPE_REASON, is_ddp_initialized
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
-from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
+from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint, delete_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
 from nanochat.flash_attention import HAS_FA3
@@ -75,6 +75,8 @@ parser.add_argument("--core-metric-every", type=int, default=2000, help="evaluat
 parser.add_argument("--core-metric-max-per-task", type=int, default=500, help="examples per task for CORE metric")
 parser.add_argument("--sample-every", type=int, default=2000, help="sample from model every N steps (-1 = disable)")
 parser.add_argument("--save-every", type=int, default=-1, help="save checkpoints every N steps (-1 = only at end)")
+parser.add_argument("--save-final-optimizer", type=int, default=1, choices=[0, 1], help="whether to save optimizer state on the final checkpoint (1=yes, 0=no)")
+parser.add_argument("--keep-last-checkpoint", type=int, default=0, choices=[0, 1], help="if enabled, delete the previous checkpoint after writing a new one so only the latest survives")
 # Output
 parser.add_argument("--model-tag", type=str, default=None, help="override model tag for checkpoint directory name")
 args = parser.parse_args()
@@ -401,6 +403,7 @@ else:
     min_val_bpb = loop_state["min_val_bpb"]
     smooth_train_loss = loop_state["smooth_train_loss"]
     total_training_time = loop_state["total_training_time"]
+last_saved_step = args.resume_from_step if resuming else None
 
 # Figure out the needed gradient accumulation micro-steps to reach the desired total batch size per step
 tokens_per_fwdbwd = args.device_batch_size * args.max_seq_len # tokens per iteration for a single rank
@@ -474,11 +477,14 @@ while True:
 
     # save checkpoint: at the end of the run, or every save_every steps, except at the first step or the resume step
     if last_step or (step > 0 and step != args.resume_from_step and args.save_every > 0 and step % args.save_every == 0):
+        optimizer_data = optimizer.state_dict()
+        if last_step and args.save_final_optimizer == 0:
+            optimizer_data = None
         save_checkpoint(
             checkpoint_dir,
             step,
             orig_model.state_dict(), # model parameters
-            optimizer.state_dict(), # optimizer state
+            optimizer_data, # optimizer state
             { # metadata saved as json
                 "step": step,
                 "val_bpb": val_bpb, # loss at last step
@@ -496,6 +502,9 @@ while True:
             },
             rank=ddp_rank,
         )
+        if args.keep_last_checkpoint == 1 and last_saved_step is not None and last_saved_step != step:
+            delete_checkpoint(checkpoint_dir, last_saved_step, delete_optimizer=True, rank=ddp_rank)
+        last_saved_step = step
 
     # termination conditions (TODO: possibly also add loss explosions etc.)
     if last_step:
