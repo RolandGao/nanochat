@@ -1,0 +1,20 @@
+cd /workspace/neural_networks_optimization/nanochat
+mkdir -p .tmp
+export TMPDIR=$PWD/.tmp
+export NANOCHAT_BASE_DIR=$PWD/.cache
+export TORCH_COMPILE_DISABLE=1
+export NANOCHAT_DTYPE=float16
+
+/venv/main/bin/python -m scripts.base_train -- \
+  --depth=12 \
+  --window-pattern=L \
+  --max-seq-len=1024 \
+  --device-batch-size=8 \
+  --total-batch-size=32768 \
+  --num-iterations=320 \
+  --eval-every=-1 \
+  --core-metric-every=-1 \
+  --sample-every=-1 \
+  --save-every=-1 \
+  --run=dummy \
+  --model-tag=v100-d12-5min
